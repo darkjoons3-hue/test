@@ -1,29 +1,63 @@
-name: Build Windows EXE
+name: Build Riddle NPC
 
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch: # Позволяет запускать сборку вручную кнопкой в GitHub
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
-  build-windows:
-    runs-on: ubuntu-latest
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux (GCC) ──
+          - name: "Linux (g++)"
+            os: ubuntu-latest
+            compiler: g++
+            cxx_flags: "-std=c++17 -Wall -Wextra -O2"
+            output: "riddle_npc"
+
+          # ── macOS (Clang) ──
+          - name: "macOS (clang++)"
+            os: macos-latest
+            compiler: clang++
+            cxx_flags: "-std=c++17 -Wall -Wextra -O2"
+            output: "riddle_npc"
+
+          # ── Windows (MSVC) ──
+          - name: "Windows (MSVC)"
+            os: windows-latest
+            compiler: cl
+            cxx_flags: "/std:c++17 /utf-8 /EHsc /O2 /W4"
+            output: "riddle_npc.exe"
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install MinGW-w64
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y mingw-w64
+      # На Windows подготавливаем окружение MSVC (cl.exe)
+      - name: Setup MSVC (Windows only)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Compile C++ to Windows EXE
-      run: |
-        x86_64-w64-mingw32-g++ main.cpp -o MyApp.exe -municode -lgdi32 -luser32 -static
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ${{ matrix.compiler }} ${{ matrix.cxx_flags }} main.cpp -o ${{ matrix.output }}
 
-    - name: Upload EXE Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-exe
-        path: MyApp.exe
-        if-no-files-found: error
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          ${{ matrix.compiler }} ${{ matrix.cxx_flags }} main.cpp /Fe:${{ matrix.output }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: riddle_npc-${{ runner.os }}
+          path: ${{ matrix.output }}
+          retention-days: 7
